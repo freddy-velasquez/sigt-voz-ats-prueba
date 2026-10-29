@@ -25,18 +25,25 @@
   const texto=document.getElementById('texto'), estado=document.getElementById('estado');
   const iniciar=document.getElementById('iniciar'), detener=document.getElementById('detener'), enviar=document.getElementById('enviar');
   const Constructor=window.SpeechRecognition||window.webkitSpeechRecognition;
-  let reconocimiento=null, textoFinal='', activo=false, enviado=false;
+  let reconocimiento=null, resultados=[], activo=false, enviado=false;
   if(!window.opener){estado.textContent='Abra esta página desde el botón Dictar por voz del formulario ATS de SIGT para poder devolver el texto.';}
   if(!Constructor){estado.textContent='Este navegador no admite reconocimiento de voz. Pruebe Chrome actualizado.';iniciar.disabled=true;}
   else {
     reconocimiento=new Constructor(); reconocimiento.lang='es-NI'; reconocimiento.continuous=true; reconocimiento.interimResults=true;
     iniciar.addEventListener('click',function(){
-      try { textoFinal=''; texto.value=''; enviado=false; enviar.disabled=false; reconocimiento.start(); iniciar.disabled=true; detener.disabled=false; estado.textContent='Escuchando... hable ahora.'; }
+      try { resultados=[]; texto.value=''; enviado=false; enviar.disabled=false; reconocimiento.start(); iniciar.disabled=true; detener.disabled=false; estado.textContent='Escuchando... hable ahora.'; }
       catch(e){estado.textContent='No se pudo iniciar. Pulse Detener si sigue activo y vuelva a intentarlo.';}
     });
     detener.addEventListener('click',function(){try{reconocimiento.stop();}catch(e){}});
     reconocimiento.onstart=function(){activo=true;estado.textContent='Escuchando... hable ahora.';};
-    reconocimiento.onresult=function(e){let parcial='';for(let i=e.resultIndex;i<e.results.length;i++){const frase=e.results[i][0].transcript||'';if(e.results[i].isFinal)textoFinal+=frase+' ';else parcial+=frase;}texto.value=(textoFinal+parcial).trimStart();};
+    reconocimiento.onresult=function(e){
+      // Guardar cada resultado por su índice evita acumular dos veces finales
+      // cuando Chrome móvil vuelve a emitir resultados previos.
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        resultados[i]={texto:(e.results[i][0].transcript||'').trim(),final:e.results[i].isFinal};
+      }
+      texto.value=resultados.filter(Boolean).map(r=>r.texto).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+    };
     reconocimiento.onerror=function(e){estado.textContent='Error de reconocimiento: '+e.error+'. Revise el permiso del micrófono e inténtelo de nuevo.';};
     reconocimiento.onend=function(){activo=false;iniciar.disabled=false;detener.disabled=true;if(!estado.textContent.startsWith('Error'))estado.textContent='Dictado detenido. Revise el texto y pulse Enviar a SIGT.';};
   }
@@ -48,7 +55,9 @@
     enviado=true;
     enviar.disabled=true;
     const messageId='ats-'+Date.now()+'-'+Math.random().toString(36).slice(2);
-    window.opener.postMessage({type:'SIGT_ATS_DICTATION_RESULT',text:transcripcion,messageId:messageId},'https://script.google.com');
+    // El despliegue de Apps Script puede usar script.google.com o script.googleusercontent.com.
+    // El receptor SIGT valida event.origin contra el dominio exacto de GitHub Pages.
+    window.opener.postMessage({type:'SIGT_ATS_DICTATION_RESULT',text:transcripcion,messageId:messageId},'*');
     estado.textContent='Texto enviado a SIGT. Cerrando esta ventana...';
     window.setTimeout(function(){
       try { window.close(); } catch(e) {}
