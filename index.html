@@ -37,12 +37,21 @@
     detener.addEventListener('click',function(){try{reconocimiento.stop();}catch(e){}});
     reconocimiento.onstart=function(){activo=true;estado.textContent='Escuchando... hable ahora.';};
     reconocimiento.onresult=function(e){
-      // Guardar cada resultado por su índice evita acumular dos veces finales
-      // cuando Chrome móvil vuelve a emitir resultados previos.
-      for(let i=e.resultIndex;i<e.results.length;i++){
-        resultados[i]={texto:(e.results[i][0].transcript||'').trim(),final:e.results[i].isFinal};
+      // Reconstruir desde la lista completa de resultados evita sumar el mismo
+      // resultado en cada evento. Además, descartar segmentos finales idénticos
+      // consecutivos que algunos navegadores móviles repiten.
+      resultados=[];
+      for(let i=0;i<e.results.length;i++){
+        const frase=(e.results[i][0].transcript||'').replace(/\s+/g,' ').trim();
+        if(!frase) continue;
+        const final=!!e.results[i].isFinal;
+        const anterior=resultados.length ? resultados[resultados.length-1] : null;
+        const normalizada=frase.toLocaleLowerCase('es').replace(/[.,;:!?]+$/,'').trim();
+        const anteriorNorm=anterior ? anterior.texto.toLocaleLowerCase('es').replace(/[.,;:!?]+$/,'').trim() : '';
+        if(final && anterior && anterior.final && normalizada && normalizada===anteriorNorm) continue;
+        resultados.push({texto:frase,final:final});
       }
-      texto.value=resultados.filter(Boolean).map(r=>r.texto).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+      texto.value=resultados.map(r=>r.texto).join(' ').replace(/\s+/g,' ').trim();
     };
     reconocimiento.onerror=function(e){estado.textContent='Error de reconocimiento: '+e.error+'. Revise el permiso del micrófono e inténtelo de nuevo.';};
     reconocimiento.onend=function(){activo=false;iniciar.disabled=false;detener.disabled=true;if(!estado.textContent.startsWith('Error'))estado.textContent='Dictado detenido. Revise el texto y pulse Enviar a SIGT.';};
@@ -57,12 +66,26 @@
     const messageId='ats-'+Date.now()+'-'+Math.random().toString(36).slice(2);
     // El despliegue de Apps Script puede usar script.google.com o script.googleusercontent.com.
     // El receptor SIGT valida event.origin contra el dominio exacto de GitHub Pages.
+    const manejadorConfirmacion=function(evento){
+      if(evento.source!==window.opener || !evento.data || evento.data.type!=='SIGT_ATS_DICTATION_ACK' || evento.data.messageId!==messageId) return;
+      window.removeEventListener('message',manejadorConfirmacion);
+      estado.textContent='SIGT confirmó la recepción. Cerrando esta ventana...';
+      window.setTimeout(function(){
+        try { window.close(); } catch(e) {}
+        if(!window.closed) estado.textContent='SIGT recibió el texto. Puede volver a SIGT y cerrar esta ventana.';
+      },150);
+    };
+    window.addEventListener('message',manejadorConfirmacion);
     window.opener.postMessage({type:'SIGT_ATS_DICTATION_RESULT',text:transcripcion,messageId:messageId},'*');
-    estado.textContent='Texto enviado a SIGT. Cerrando esta ventana...';
+    estado.textContent='Enviando texto a SIGT y esperando confirmación...';
     window.setTimeout(function(){
-      try { window.close(); } catch(e) {}
-      if(!window.closed) estado.textContent='Texto enviado. Si esta ventana sigue abierta, vuelva a SIGT usando Atrás.';
-    },300);
+      if(!enviado) return;
+      window.removeEventListener('message',manejadorConfirmacion);
+      if(estado.textContent.indexOf('confirmó la recepción')===-1){
+        enviado=false; enviar.disabled=false;
+        estado.textContent='SIGT no confirmó la recepción. Vuelva a SIGT, revise que esté desplegado el receptor actualizado e inténtelo de nuevo.';
+      }
+    },4000);
   });
 })();
 </script>
