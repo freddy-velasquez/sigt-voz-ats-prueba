@@ -37,23 +37,38 @@
     detener.addEventListener('click',function(){try{reconocimiento.stop();}catch(e){}});
     reconocimiento.onstart=function(){activo=true;estado.textContent='Escuchando... hable ahora.';};
     reconocimiento.onresult=function(e){
-      // Reconstruir el texto desde el conjunto completo de resultados.
-      // En algunos móviles el motor entrega la misma frase como resultado final
-      // y vuelve a entregarla en el siguiente evento. Se elimina cualquier
-      // segmento consecutivo idéntico, sea final o provisional, conservando
-      // la versión final cuando ambas coinciden.
-      const nuevos=[];
+      // Algunos motores móviles devuelven fragmentos acumulativos:
+      // "prueba", "prueba de", "prueba de una frase". No deben concatenarse.
       const normalizar=function(s){return String(s||'').toLocaleLowerCase('es').replace(/[.,;:!?¿¡]+/g,'').replace(/\s+/g,' ').trim();};
+      const limpiar=function(s){return String(s||'').replace(/\s+/g,' ').trim();};
+      const nuevos=[];
       for(let i=0;i<e.results.length;i++){
-        const frase=(e.results[i][0].transcript||'').replace(/\s+/g,' ').trim();
+        const frase=limpiar(e.results[i][0] && e.results[i][0].transcript);
         if(!frase) continue;
-        const final=!!e.results[i].isFinal;
+        const actual=normalizar(frase);
         const anterior=nuevos.length ? nuevos[nuevos.length-1] : null;
-        if(anterior && normalizar(frase)===normalizar(anterior.texto)){
-          if(final && !anterior.final) nuevos[nuevos.length-1]={texto:frase,final:true};
-          continue;
+        if(anterior){
+          const prev=normalizar(anterior.texto);
+          // Si el nuevo resultado contiene al anterior completo al inicio,
+          // reemplazarlo por la versión más larga en lugar de repetirlo.
+          if(actual===prev || actual.startsWith(prev+' ')){
+            nuevos[nuevos.length-1]={texto:frase,final:!!e.results[i].isFinal};
+            continue;
+          }
+          // Si el resultado previo ya contiene al nuevo, conservar el más largo.
+          if(prev===actual || prev.startsWith(actual+' ')) continue;
+          // Fusionar solapamiento de palabras entre fragmentos consecutivos.
+          const a=anterior.texto.split(' '), b=frase.split(' ');
+          let solape=0;
+          for(let n=Math.min(a.length,b.length);n>0;n--){
+            if(normalizar(a.slice(-n).join(' '))===normalizar(b.slice(0,n).join(' '))){solape=n;break;}
+          }
+          if(solape>0){
+            nuevos[nuevos.length-1]={texto:a.concat(b.slice(solape)).join(' '),final:!!e.results[i].isFinal};
+            continue;
+          }
         }
-        nuevos.push({texto:frase,final:final});
+        nuevos.push({texto:frase,final:!!e.results[i].isFinal});
       }
       resultados=nuevos;
       texto.value=resultados.map(r=>r.texto).join(' ').replace(/\s+/g,' ').trim();
