@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prueba de dictado ATS - SIGT</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: 30px auto;
+      padding: 20px;
+      color: #222;
+    }
+    h2 { color: #b00020; }
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 180px;
+      padding: 12px;
+      font-size: 16px;
+    }
+    button {
+      padding: 12px 18px;
+      margin: 8px 5px 8px 0;
+      cursor: pointer;
+    }
+    #estado { margin: 12px 0; }
+  </style>
+</head>
+<body>
+  <h2>Dictado de actividades ATS</h2>
+  <p>Presiona el botón y dicta una actividad en español.</p>
+
+  <textarea id="texto" placeholder="Aquí aparecerá el texto dictado..."></textarea>
+  <br>
+  <button id="iniciar">🎙️ Iniciar dictado</button>
+  <button id="detener" disabled>Detener</button>
+  <p id="estado">Listo para probar.</p>
+
+  <script>
+    const texto = document.getElementById("texto");
+    const estado = document.getElementById("estado");
+    const iniciar = document.getElementById("iniciar");
+    const detener = document.getElementById("detener");
+
+    const Reconocimiento =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+    if (!Reconocimiento) {
+      estado.textContent =
+        "Este navegador no admite el reconocimiento de voz.";
+      iniciar.disabled = true;
+    } else {
+      const reconocimiento = new Reconocimiento();
+      reconocimiento.lang = "es-NI";
+      reconocimiento.continuous = true;
+      reconocimiento.interimResults = true;
+
+      let textoFinal = "";
+
+      iniciar.onclick = () => {
+        textoFinal = texto.value;
+        reconocimiento.start();
+        iniciar.disabled = true;
+        detener.disabled = false;
+        estado.textContent = "Escuchando... habla ahora.";
+      };
+
+      detener.onclick = () => reconocimiento.stop();
+
+      reconocimiento.onresult = (evento) => {
+        let provisional = "";
+
+        for (let i = evento.resultIndex;
+             i < evento.results.length; i++) {
+          const frase = evento.results[i][0].transcript;
+
+          if (evento.results[i].isFinal) {
+            textoFinal += frase + " ";
+          } else {
+            provisional += frase;
+          }
+        }
+
+        texto.value = textoFinal + provisional;
+      };
+
+      reconocimiento.onerror = (evento) => {
+        estado.textContent =
+          "Error de reconocimiento: " + evento.error;
+      };
+
+      reconocimiento.onend = () => {
+        iniciar.disabled = false;
+        detener.disabled = true;
+
+        if (!estado.textContent.startsWith("Error")) {
+          estado.textContent = "Dictado detenido.";
+        }
+      };
+    }
+  </script>
+</body>
+</html>
