@@ -25,13 +25,13 @@
   const texto=document.getElementById('texto'), estado=document.getElementById('estado');
   const iniciar=document.getElementById('iniciar'), detener=document.getElementById('detener'), enviar=document.getElementById('enviar');
   const Constructor=window.SpeechRecognition||window.webkitSpeechRecognition;
-  let reconocimiento=null, textoFinal='', activo=false, envioRealizado=false;
+  let reconocimiento=null, textoFinal='', activo=false, enviado=false;
   if(!window.opener){estado.textContent='Abra esta página desde el botón Dictar por voz del formulario ATS de SIGT para poder devolver el texto.';}
   if(!Constructor){estado.textContent='Este navegador no admite reconocimiento de voz. Pruebe Chrome actualizado.';iniciar.disabled=true;}
   else {
     reconocimiento=new Constructor(); reconocimiento.lang='es-NI'; reconocimiento.continuous=true; reconocimiento.interimResults=true;
     iniciar.addEventListener('click',function(){
-      try { textoFinal=texto.value||''; reconocimiento.start(); iniciar.disabled=true; detener.disabled=false; estado.textContent='Escuchando... hable ahora.'; }
+      try { textoFinal=''; texto.value=''; enviado=false; enviar.disabled=false; reconocimiento.start(); iniciar.disabled=true; detener.disabled=false; estado.textContent='Escuchando... hable ahora.'; }
       catch(e){estado.textContent='No se pudo iniciar. Pulse Detener si sigue activo y vuelva a intentarlo.';}
     });
     detener.addEventListener('click',function(){try{reconocimiento.stop();}catch(e){}});
@@ -41,17 +41,19 @@
     reconocimiento.onend=function(){activo=false;iniciar.disabled=false;detener.disabled=true;if(!estado.textContent.startsWith('Error'))estado.textContent='Dictado detenido. Revise el texto y pulse Enviar a SIGT.';};
   }
   enviar.addEventListener('click',function(){
-    if(envioRealizado) return;
+    if(enviado) return;
     const transcripcion=texto.value.trim();
     if(!transcripcion){estado.textContent='No hay texto para enviar. Primero dicte o escriba una descripción.';return;}
     if(!window.opener){estado.textContent='No se detectó la ventana de SIGT. Cierre esta página y abra el dictado desde el formulario ATS.';return;}
-    envioRealizado=true;
+    enviado=true;
     enviar.disabled=true;
-    const idEnvio=(window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now())+'-'+Math.random().toString(36).slice(2);
-    try { window.opener.postMessage({type:'SIGT_ATS_DICTATION_RESULT',text:transcripcion,id:idEnvio},'*'); }
-    catch(err) { envioRealizado=false; enviar.disabled=false; estado.textContent='No se pudo enviar el texto. Vuelva a intentarlo.'; return; }
-    estado.textContent='Texto enviado a SIGT. Esta ventana se cerrará en un momento.';
-    setTimeout(function(){ try { window.close(); } catch(err) {} },700);
+    const messageId='ats-'+Date.now()+'-'+Math.random().toString(36).slice(2);
+    window.opener.postMessage({type:'SIGT_ATS_DICTATION_RESULT',text:transcripcion,messageId:messageId},'https://script.google.com');
+    estado.textContent='Texto enviado a SIGT. Cerrando esta ventana...';
+    window.setTimeout(function(){
+      try { window.close(); } catch(e) {}
+      if(!window.closed) estado.textContent='Texto enviado. Si esta ventana sigue abierta, vuelva a SIGT usando Atrás.';
+    },300);
   });
 })();
 </script>
