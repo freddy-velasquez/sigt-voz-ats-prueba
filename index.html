@@ -3,104 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Prueba de dictado ATS - SIGT</title>
+  <title>Dictado de actividades ATS - SIGT</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 700px;
-      margin: 30px auto;
-      padding: 20px;
-      color: #222;
-    }
-    h2 { color: #b00020; }
-    textarea {
-      box-sizing: border-box;
-      width: 100%;
-      min-height: 180px;
-      padding: 12px;
-      font-size: 16px;
-    }
-    button {
-      padding: 12px 18px;
-      margin: 8px 5px 8px 0;
-      cursor: pointer;
-    }
-    #estado { margin: 12px 0; }
+    body{font-family:Arial,sans-serif;max-width:700px;margin:24px auto;padding:20px;color:#222}
+    h2{color:#b00020} textarea{box-sizing:border-box;width:100%;min-height:180px;padding:12px;font-size:16px}
+    button{padding:12px 16px;margin:8px 6px 8px 0;cursor:pointer;border-radius:7px;border:1px solid #bbb;background:#f6f6f6}
+    button:disabled{opacity:.55;cursor:not-allowed} #enviar{background:#b00020;color:white;border-color:#b00020}
+    #estado{margin:12px 0;line-height:1.45}
   </style>
 </head>
 <body>
   <h2>Dictado de actividades ATS</h2>
-  <p>Presiona el botón y dicta una actividad en español.</p>
-
-  <textarea id="texto" placeholder="Aquí aparecerá el texto dictado..."></textarea>
-  <br>
+  <p>Dicta la descripción paso a paso. Al terminar, pulsa <b>Detener</b> y luego <b>Enviar a SIGT</b>.</p>
+  <textarea id="texto" placeholder="Aquí aparecerá el texto dictado..."></textarea><br>
   <button id="iniciar">🎙️ Iniciar dictado</button>
   <button id="detener" disabled>Detener</button>
-  <p id="estado">Listo para probar.</p>
-
-  <script>
-    const texto = document.getElementById("texto");
-    const estado = document.getElementById("estado");
-    const iniciar = document.getElementById("iniciar");
-    const detener = document.getElementById("detener");
-
-    const Reconocimiento =
-      window.SpeechRecognition ||
-      window.webkitSpeechRecognition;
-
-    if (!Reconocimiento) {
-      estado.textContent =
-        "Este navegador no admite el reconocimiento de voz.";
-      iniciar.disabled = true;
-    } else {
-      const reconocimiento = new Reconocimiento();
-      reconocimiento.lang = "es-NI";
-      reconocimiento.continuous = true;
-      reconocimiento.interimResults = true;
-
-      let textoFinal = "";
-
-      iniciar.onclick = () => {
-        textoFinal = texto.value;
-        reconocimiento.start();
-        iniciar.disabled = true;
-        detener.disabled = false;
-        estado.textContent = "Escuchando... habla ahora.";
-      };
-
-      detener.onclick = () => reconocimiento.stop();
-
-      reconocimiento.onresult = (evento) => {
-        let provisional = "";
-
-        for (let i = evento.resultIndex;
-             i < evento.results.length; i++) {
-          const frase = evento.results[i][0].transcript;
-
-          if (evento.results[i].isFinal) {
-            textoFinal += frase + " ";
-          } else {
-            provisional += frase;
-          }
-        }
-
-        texto.value = textoFinal + provisional;
-      };
-
-      reconocimiento.onerror = (evento) => {
-        estado.textContent =
-          "Error de reconocimiento: " + evento.error;
-      };
-
-      reconocimiento.onend = () => {
-        iniciar.disabled = false;
-        detener.disabled = true;
-
-        if (!estado.textContent.startsWith("Error")) {
-          estado.textContent = "Dictado detenido.";
-        }
-      };
-    }
-  </script>
+  <button id="enviar">Enviar a SIGT</button>
+  <p id="estado" role="status">Listo para probar.</p>
+<script>
+(function(){
+  const texto=document.getElementById('texto'), estado=document.getElementById('estado');
+  const iniciar=document.getElementById('iniciar'), detener=document.getElementById('detener'), enviar=document.getElementById('enviar');
+  const Constructor=window.SpeechRecognition||window.webkitSpeechRecognition;
+  let reconocimiento=null, textoFinal='', activo=false;
+  if(!window.opener){estado.textContent='Abra esta página desde el botón Dictar por voz del formulario ATS de SIGT para poder devolver el texto.';}
+  if(!Constructor){estado.textContent='Este navegador no admite reconocimiento de voz. Pruebe Chrome actualizado.';iniciar.disabled=true;}
+  else {
+    reconocimiento=new Constructor(); reconocimiento.lang='es-NI'; reconocimiento.continuous=true; reconocimiento.interimResults=true;
+    iniciar.addEventListener('click',function(){
+      try { textoFinal=texto.value||''; reconocimiento.start(); iniciar.disabled=true; detener.disabled=false; estado.textContent='Escuchando... hable ahora.'; }
+      catch(e){estado.textContent='No se pudo iniciar. Pulse Detener si sigue activo y vuelva a intentarlo.';}
+    });
+    detener.addEventListener('click',function(){try{reconocimiento.stop();}catch(e){}});
+    reconocimiento.onstart=function(){activo=true;estado.textContent='Escuchando... hable ahora.';};
+    reconocimiento.onresult=function(e){let parcial='';for(let i=e.resultIndex;i<e.results.length;i++){const frase=e.results[i][0].transcript||'';if(e.results[i].isFinal)textoFinal+=frase+' ';else parcial+=frase;}texto.value=(textoFinal+parcial).trimStart();};
+    reconocimiento.onerror=function(e){estado.textContent='Error de reconocimiento: '+e.error+'. Revise el permiso del micrófono e inténtelo de nuevo.';};
+    reconocimiento.onend=function(){activo=false;iniciar.disabled=false;detener.disabled=true;if(!estado.textContent.startsWith('Error'))estado.textContent='Dictado detenido. Revise el texto y pulse Enviar a SIGT.';};
+  }
+  enviar.addEventListener('click',function(){
+    const transcripcion=texto.value.trim();
+    if(!transcripcion){estado.textContent='No hay texto para enviar. Primero dicte o escriba una descripción.';return;}
+    if(!window.opener){estado.textContent='No se detectó la ventana de SIGT. Cierre esta página y abra el dictado desde el formulario ATS.';return;}
+    window.opener.postMessage({type:'SIGT_ATS_DICTATION_RESULT',text:transcripcion},'*');
+    estado.textContent='Texto enviado a SIGT. Puede volver al formulario y revisarlo.';
+  });
+})();
+</script>
 </body>
 </html>
